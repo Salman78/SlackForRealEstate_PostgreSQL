@@ -188,3 +188,172 @@ INSERT INTO Message VALUES('20190619 10:36:25 AM', 'It''s 2019 and still no offe
 INSERT INTO Message VALUES('20190619 10:36:26 AM', 'Eff me...', 'user6@gmail.com', 1010);
 
 SELECT * FROM Message;
+
+
+-- Query One: Find the average price of houses which has at least one message about them
+SELECT AVG(h.price)
+FROM House h INNER JOIN Deal d
+	ON h.address = d.address AND h.unitNum = d.unitNum
+WHERE d.id IN (
+	SELECT id FROM Message
+);
+--          avg         
+-- ---------------------
+--  537625.000000000000
+
+-- Query Two: Find the Max home price which has more than one message about them
+SELECT MAX(h.price)
+FROM House h INNER JOIN Deal d
+	ON h.address = d.address AND h.unitNum = d.unitNum
+WHERE d.id IN (
+	SELECT id FROM Message GROUP BY id HAVING COUNT(id) > 1
+);
+--   max 
+-- --------
+--  850000
+-- (1 row)
+
+-- Query 3 - Find the First and Last name of the Seller Agent who is closing the most deals
+SELECT u.first_name as First, u.last_name as Last
+FROM dataUser u INNER JOIN Agent a
+	ON u.email = a.email
+WHERE a.email IN (
+	SELECT sellAgent as num FROM Deal WHERE status = 'Closing' GROUP BY sellAgent ORDER BY num DESC LIMIT 1
+);
+--  first |   last    
+-- -------+-----------
+--  Amy   | Appleseed
+-- (1 row)
+
+-- Query 4 - Find the email of users who are in one deal as a buyer and one deal as a seller
+SELECT email 
+FROM dataUser 
+WHERE email in (
+	(SELECT buyer1 FROM Deal WHERE buyer1 IS NOT NULL UNION SELECT buyer2 FROM Deal WHERE buyer2 IS NOT NULL)
+	INTERSECT
+	(SELECT seller1 FROM Deal WHERE seller1 IS NOT NULL UNION SELECT seller2 FROM Deal WHERE seller2 IS NOT NULL)
+);
+--       email      
+-- -----------------
+--  user4@gmail.com
+-- (1 row)
+
+-- Query 5 - Find the email of agent(s) who aren't running a single deal
+SELECT email 
+FROM Agent
+WHERE email NOT in (
+	SELECT sellAgent FROM Deal WHERE sellAgent IS NOT NULL 
+	UNION 
+	SELECT buyAgent FROM Deal WHERE buyAgent IS NOT NULL
+);
+--       email      
+-- -----------------
+--  user3@gmail.com
+-- (1 row)
+
+--QUESTION 7
+--first view created: It combines the three tables datauser, buyer and seller in a single VIEW
+--to check which users are buyers and sellers and if one user is both a buyer and a seller
+CREATE VIEW buyer_and_seller_info (first_name, last_name, email, highest_price, lowest_price) AS
+	SELECT	 d.first_name,
+		 	d.last_name, 
+		   	d.email, 
+		   	b.highest_price, 
+		   	s.lowest_price	
+	   	FROM  datauser d	
+	   		LEFT JOIN buyer b ON d.email = b.email	
+   		LEFT JOIN seller s ON d.email = s.email;
+ /*
+cs421=> SELECT * FROM buyer_and_seller_info;
+ first_name | last_name |      email       | highest_price | lowest_price 
+------------+-----------+------------------+---------------+--------------
+ Mister     | Manley    | user7@gmail.com  |               |       800000
+ Misses     | Manley    | user8@gmail.com  |               |       850000
+ Alice      | Smith     | user1@gmail.com  |               |        50000
+ Bob        | Smith     | user2@gmail.com  |               |      1000000
+ Kevin      | Smith     | user3@gmail.com  |               |      1250000
+ Calvin     | Johns     | user4@gmail.com  |        100000 |      1250000
+ Elmo       | Balony    | user13@gmail.com |               |             
+ Amy        | Appleseed | user6@gmail.com  |        800000 |             
+ Steve      | Stevies   | user14@gmail.com |               |             
+ Betty      | Buyer     | user9@gmail.com  |       1200000 |             
+ Kevin      | Benz      | user5@gmail.com  |        400000 |             
+ Brendan    | Buyer     | user10@gmail.com |       1600000 |             
+ Ana        | Hulk      | user11@gmail.com |               |             
+ Jon        | Tron      | user12@gmail.com |               |             
+(14 rows)
+*/
+
+--Query on buyer_and_seller_info: returns the user who is both a buyer and a seller
+SELECT CONCAT(bsi.first_name, ' ' , bsi.last_name) AS both_buyer_and_seller, bsi.email FROM buyer_and_seller_info bsi
+	WHERE bsi.lowest_price IS NOT NULL AND bsi.highest_price IS NOT NULL;
+/*
+ both_buyer_and_seller |      email      
+-----------------------+-----------------
+ Calvin Johns          | user4@gmail.com
+(1 row)
+*/
+
+--second view created: Combines two tables house and deal into a single VIEW and shows info about million dollar properties
+CREATE VIEW million_dollar_property (address, unit_num, price, status, sell_agent) AS	SELECT	
+			 h.address,
+			h.unitnum,
+			h.price,
+			d.status,
+			d.sellagent
+		FROM house h
+				LEFT JOIN deal d ON h.address = d.address AND h.unitnum = d.unitnum
+			WHERE h.price >= 1000000;
+/*
+cs421=> SELECT * FROM million_dollar_property;
+     address     | unit_num |  price   |   status    |   sell_agent    
+-----------------+----------+----------+-------------+-----------------
+ 909 Nike Street |        0 | 20000000 | Closing     | user6@gmail.com
+ 1023 King St W. |     1408 |  1000000 | Negotiating | user4@gmail.com
+ 1023 King St W. |     1409 |  1500000 | Negotiating | user4@gmail.com
+(3 rows)
+
+*/
+
+--Query on million_dollar_property: All the associated info about million dollar house that's currently being negotiated
+SELECT	m.address, 
+		m.unit_num, 
+		m.status,
+		m.sell_agent,
+		d.seller1,
+		d.seller2,
+		d.buyagent,
+		d.buyer1,
+		d.buyer2
+	FROM million_dollar_property m 
+			LEFT JOIN deal d ON m.address = d.address AND m.unit_num = d.unitnum
+		WHERE m.status = 'Negotiating';
+/*
+     address     | unit_num |   status    |   sell_agent    |     seller1     |     seller2     |    buyagent     |     buyer1      |      buyer2      
+-----------------+----------+-------------+-----------------+-----------------+-----------------+-----------------+-----------------+------------------
+ 1023 King St W. |     1408 | Negotiating | user4@gmail.com | user4@gmail.com |                 | user2@gmail.com | user5@gmail.com | user6@gmail.com
+ 1023 King St W. |     1409 | Negotiating | user4@gmail.com | user4@gmail.com | user3@gmail.com | user1@gmail.com | user9@gmail.com | user10@gmail.com
+(2 rows)
+*/
+-- We try to update email 
+UPDATE buyer_and_seller_info SET email = 'alice_smith@gmail.com'
+	WHERE first_name = 'Alice' AND last_name = 'Smith';
+	--output ->> ERROR:  cannot update view "buyer_and_seller_info"
+			--DETAIL:  Views that do not select from a single table or view are not automatically updatable.
+			--HINT:  To enable updating the view, provide an INSTEAD OF UPDATE trigger or an unconditional ON UPDATE DO INSTEAD rule.
+
+-- We try to update one of our million dollar property's status from 'Negotiating' to 'Closing' in our million_dollar_property VIEW
+UPDATE million_dollar_property SET status = 'Closing' 
+	WHERE address = '1023 King St W.' AND unit_num = 1408;
+	--output ->> ERROR:  cannot update view "million_dollar_property"
+			--DETAIL:  Views that do not select from a single table or view are not automatically updatable.
+			--HINT:  To enable updating the view, provide an INSTEAD OF UPDATE trigger or an unconditional ON UPDATE DO INSTEAD rule.
+
+--Question 8 
+--all CHECK constraints added to CREATE TABLES.
+--run a query to UPDATE a field so that CHECK constraint return FALSE
+UPDATE house SET price = -10000 WHERE address = '20 Hally Ave' AND unitnum = 2;
+
+
+
+
